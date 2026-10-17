@@ -1508,7 +1508,7 @@ fun SyncSecurityScreen(
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
-                            Text("Download APK FinVesta v1.2.2", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Download APK FinVesta v1.2.3", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Text("Instalasi Mandiri di Perangkat Android", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -1516,7 +1516,7 @@ fun SyncSecurityScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = "Untuk mengunduh APK FinVesta versi terbaru (v1.2.2), buka menu Settings / Titik Tiga di panel pojok kanan atas AI Studio Build, lalu pilih 'Export' ➔ 'Download APK' atau 'Download ZIP'.",
+                        text = "Untuk mengunduh APK FinVesta versi terbaru (v1.2.3), buka menu Settings / Titik Tiga di panel pojok kanan atas AI Studio Build, lalu pilih 'Export' ➔ 'Download APK' atau 'Download ZIP'.",
                         fontSize = 12.sp,
                         lineHeight = 15.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1539,7 +1539,7 @@ fun SyncSecurityScreen(
                     ) {
                         Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Petunjuk Unduh APK v1.2.2", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                        Text("Petunjuk Unduh APK v1.2.3", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                     }
                 }
             }
@@ -1551,7 +1551,7 @@ fun SyncSecurityScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "FinVesta v1.2.2",
+                    text = "FinVesta v1.2.3",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

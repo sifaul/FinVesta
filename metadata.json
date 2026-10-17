@@ -1,0 +1,7 @@
+{
+  "name": "FinVesta",
+  "description": "Manajemen pendapatan, investasi multi-aset, pengeluaran harian, grafik analisis bulanan, pengingat pembayaran, sinkronisasi real-time terenkripsi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

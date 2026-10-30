@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Ignore library version suggestions: versions are tightly pinned and tested for container compatibility -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <!-- Adaptive icons are programmatically rendered -->
+    <issue id="IconLauncherShape" severity="ignore" />
+</lint>

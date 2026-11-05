@@ -141,19 +141,20 @@ class FinVestaViewModel(application: Application) : AndroidViewModel(application
     // dan dana tabungan / pos spending tidak tercatat dalam total saldo kas utama.
     // Pengeluaran dari tabungan / pos spending hanya mengurangi saldo tujuan, bukan saldo kas utama.
     val dashboardFinancialState: StateFlow<DashboardFinancialState> = allTransactions.map { txList ->
-        val income = txList.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
-        val mainCashExpenses = txList.filter { 
+        val generalTxs = txList.filter { !it.categoryName.equals("Pengeluaran Tujuan", ignoreCase = true) }
+        val income = generalTxs.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+        val mainCashExpenses = generalTxs.filter { 
             it.type == TransactionType.EXPENSE && 
             !isFromSavings(it.wallet, it.categoryName) && 
             !isFromSpendingPos(it.wallet) 
         }.sumOf { it.amount }
-        val totalExpense = txList.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+        val totalExpense = generalTxs.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
         DashboardFinancialState(
             totalIncome = income,
             totalExpense = totalExpense,
             netCashFlow = income - mainCashExpenses,
-            recentTransactions = txList.take(5),
-            totalTransactionCount = txList.size,
+            recentTransactions = generalTxs.take(5),
+            totalTransactionCount = generalTxs.size,
             isLoading = false
         )
     }.stateIn(
@@ -682,8 +683,10 @@ class FinVestaViewModel(application: Application) : AndroidViewModel(application
 
     fun isFromSavings(wallet: String, categoryName: String): Boolean {
         return wallet.startsWith("Tabungan", ignoreCase = true) ||
+                wallet.startsWith("Tujuan", ignoreCase = true) ||
                 categoryName.equals("Dari Tabungan", ignoreCase = true) ||
-                categoryName.equals("Pengeluaran Tabungan", ignoreCase = true)
+                categoryName.equals("Pengeluaran Tabungan", ignoreCase = true) ||
+                categoryName.equals("Pengeluaran Tujuan", ignoreCase = true)
     }
 
     fun isFromSpendingPos(wallet: String): Boolean {
@@ -926,17 +929,48 @@ class FinVestaViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun spendGoalFunds(
+        goal: com.example.data.model.FinancialGoalEntity,
+        amount: Double,
+        title: String,
+        note: String = "",
+        dateEpochMillis: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch {
+            // 1. Kurangi saldo tersimpan sasaran tanpa menembus angka di bawah nol
+            val updatedSaved = (goal.currentSavedAmount - amount).coerceAtLeast(0.0)
+            repository.updateGoal(goal.copy(currentSavedAmount = updatedSaved))
+
+            // 2. Catat pengeluaran tujuan yang terisolasi khusus di dalam sasaran ini
+            repository.insertTransaction(
+                TransactionEntity(
+                    type = TransactionType.EXPENSE,
+                    title = title.trim().ifEmpty { "Pengeluaran ${goal.name}" },
+                    amount = amount,
+                    categoryName = "Pengeluaran Tujuan",
+                    wallet = "Tujuan: ${goal.name}",
+                    note = note.trim(),
+                    dateEpochMillis = dateEpochMillis,
+                    isEncrypted = _isE2eeActive.value
+                )
+            )
+            triggerAutoSnapshot()
+        }
+    }
+
     fun deleteGoal(goal: com.example.data.model.FinancialGoalEntity) {
         viewModelScope.launch {
             // Hapus sasaran dari database
             repository.deleteGoal(goal)
-            // Hapus semua transaksi alokasi/pengembalian tabungan terkait sasaran ini agar tren pemasukan/pengeluaran bersih
+            // Hapus semua transaksi alokasi/pengeluaran/pengembalian tabungan terkait sasaran ini agar tren pemasukan/pengeluaran bersih
             val allTxs = allTransactions.value
             for (tx in allTxs) {
                 if (tx.title.contains(goal.name, ignoreCase = true) ||
                     tx.note.contains(goal.name, ignoreCase = true) ||
+                    tx.wallet.contains(goal.name, ignoreCase = true) ||
                     (tx.categoryName == "Alokasi Tabungan" && tx.title.contains(goal.name, ignoreCase = true)) ||
-                    (tx.categoryName == "Pengembalian Tabungan" && tx.title.contains(goal.name, ignoreCase = true))
+                    (tx.categoryName == "Pengembalian Tabungan" && tx.title.contains(goal.name, ignoreCase = true)) ||
+                    (tx.categoryName == "Pengeluaran Tujuan" && (tx.wallet.contains(goal.name, ignoreCase = true) || tx.title.contains(goal.name, ignoreCase = true)))
                 ) {
                     repository.deleteTransaction(tx)
                 }

@@ -666,6 +666,7 @@ fun FinVestaMainApp(
 
                     FinNavDestination.GOALS -> GoalsScreen(
                         goals = goals,
+                        transactions = transactions,
                         onAddGoal = { name, targetAmount, targetDateMillis, category, iconName, colorHex, note, initialSaved ->
                             viewModel.addGoal(
                                 name = name,
@@ -679,7 +680,13 @@ fun FinVestaMainApp(
                             )
                         },
                         onDeleteGoal = { viewModel.deleteGoal(it) },
-                        onAllocateFunds = { goal, amount -> viewModel.allocateFundsToGoal(goal, amount) }
+                        onAllocateFunds = { goal, amount -> viewModel.allocateFundsToGoal(goal, amount) },
+                        onSpendGoalFunds = { goal, amount, title, note, dateMillis ->
+                            viewModel.spendGoalFunds(goal, amount, title, note, dateMillis)
+                        },
+                        onDeleteGoalExpense = { goal, tx ->
+                            viewModel.deleteTransaction(tx)
+                        }
                     )
 
                     FinNavDestination.CALCULATOR -> CalculatorScreen()

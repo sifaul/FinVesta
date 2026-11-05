@@ -106,11 +106,16 @@ fun IncomeExpenseScreen(
     var selectedTab by remember { mutableStateOf(0) } // 0 = Semua, 1 = Pendapatan, 2 = Pengeluaran
     var searchQuery by remember { mutableStateOf("") }
 
-    val filteredByType = remember(transactions, selectedTab) {
+    // Pengeluaran sasaran (Pengeluaran Tujuan) dicatat di luar pengeluaran umum dan hanya ada di dalam menu tujuan
+    val generalTransactions = remember(transactions) {
+        transactions.filter { !it.categoryName.equals("Pengeluaran Tujuan", ignoreCase = true) }
+    }
+
+    val filteredByType = remember(generalTransactions, selectedTab) {
         when (selectedTab) {
-            1 -> transactions.filter { it.type == TransactionType.INCOME }
-            2 -> transactions.filter { it.type == TransactionType.EXPENSE }
-            else -> transactions
+            1 -> generalTransactions.filter { it.type == TransactionType.INCOME }
+            2 -> generalTransactions.filter { it.type == TransactionType.EXPENSE }
+            else -> generalTransactions
         }
     }
 
@@ -129,8 +134,8 @@ fun IncomeExpenseScreen(
 
     val isFilterActive = searchQuery.isNotBlank() || selectedTab != 0
 
-    val totalIncome = transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
-    val totalExpense = transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+    val totalIncome = generalTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+    val totalExpense = generalTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
 
     // Deletion confirmation dialog state
     var transactionToDelete by remember { mutableStateOf<TransactionEntity?>(null) }

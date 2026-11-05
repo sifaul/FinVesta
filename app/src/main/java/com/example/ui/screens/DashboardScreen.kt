@@ -252,8 +252,11 @@ fun DashboardScreen(
     val isBiometricEnabled = remember { BiometricAuthManager.isBiometricEnabled(context) }
     val modality = remember { BiometricAuthManager.getAvailableBiometricModalities(context) }
 
-    val totalIncome = transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
-    val totalExpense = transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+    val generalTransactions = remember(transactions) {
+        transactions.filter { !it.categoryName.equals("Pengeluaran Tujuan", ignoreCase = true) }
+    }
+    val totalIncome = generalTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+    val totalExpense = generalTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
     val netCashFlow = totalIncome - totalExpense
     val totalAssetValuation = assets.sumOf { it.currentValue }
     val totalAssetGain = assets.sumOf { it.unrealizedPnl }
@@ -1056,7 +1059,7 @@ fun DashboardScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (transactions.isEmpty()) "Belum ada transaksi" else "Menampilkan ${transactions.take(5).size} dari ${transactions.size} transaksi terbaru",
+                        text = if (generalTransactions.isEmpty()) "Belum ada transaksi" else "Menampilkan ${generalTransactions.take(5).size} dari ${generalTransactions.size} transaksi terbaru",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1081,7 +1084,7 @@ fun DashboardScreen(
         }
 
         // Transaction list items
-        if (transactions.isEmpty()) {
+        if (generalTransactions.isEmpty()) {
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -1134,7 +1137,7 @@ fun DashboardScreen(
                 }
             }
         } else {
-            val displayList = transactions.take(5)
+            val displayList = generalTransactions.take(5)
             items(displayList) { tx ->
                 TransactionCardItem(
                     transaction = tx,
@@ -1142,7 +1145,7 @@ fun DashboardScreen(
                 )
             }
 
-            if (transactions.size > 5) {
+            if (generalTransactions.size > 5) {
                 item {
                     OutlinedButton(
                         onClick = onOpenTransactions,

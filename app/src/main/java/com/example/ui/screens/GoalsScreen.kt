@@ -47,6 +47,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -83,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.FinancialGoalEntity
+import com.example.data.model.TransactionEntity
 import com.example.ui.theme.Amber500
 import com.example.ui.theme.Cyan500
 import com.example.ui.theme.Emerald500
@@ -95,6 +99,7 @@ import java.util.Calendar
 @Composable
 fun GoalsScreen(
     goals: List<FinancialGoalEntity>,
+    transactions: List<TransactionEntity> = emptyList(),
     onAddGoal: (
         name: String,
         targetAmount: Double,
@@ -107,10 +112,14 @@ fun GoalsScreen(
     ) -> Unit,
     onAllocateFunds: (FinancialGoalEntity, Double) -> Unit,
     onDeleteGoal: (FinancialGoalEntity) -> Unit,
+    onSpendGoalFunds: (goal: FinancialGoalEntity, amount: Double, title: String, note: String, dateMillis: Long) -> Unit = { _, _, _, _, _ -> },
+    onDeleteGoalExpense: (goal: FinancialGoalEntity, transaction: TransactionEntity) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showAddGoalDialog by remember { mutableStateOf(false) }
     var goalToAllocate by remember { mutableStateOf<FinancialGoalEntity?>(null) }
+    var goalToSpend by remember { mutableStateOf<FinancialGoalEntity?>(null) }
+    var goalForHistory by remember { mutableStateOf<FinancialGoalEntity?>(null) }
     var allocateAmountText by remember { mutableStateOf("") }
 
     val totalTarget = goals.sumOf { it.targetAmount }
@@ -299,11 +308,26 @@ fun GoalsScreen(
                 }
 
                 items(goals, key = { it.id }) { goal ->
+                    val goalExpenses = remember(transactions, goal.name) {
+                        transactions.filter {
+                            it.categoryName.equals("Pengeluaran Tujuan", ignoreCase = true) &&
+                            (it.wallet.equals("Tujuan: ${goal.name}", ignoreCase = true) ||
+                             it.wallet.equals("Tabungan: ${goal.name}", ignoreCase = true) ||
+                             it.wallet.contains(goal.name, ignoreCase = true))
+                        }
+                    }
                     GoalCardItem(
                         goal = goal,
+                        goalExpenses = goalExpenses,
                         onAllocate = {
                             goalToAllocate = goal
                             allocateAmountText = ""
+                        },
+                        onSpend = {
+                            goalToSpend = goal
+                        },
+                        onViewHistory = {
+                            goalForHistory = goal
                         },
                         onDelete = { onDeleteGoal(goal) }
                     )
@@ -461,18 +485,54 @@ fun GoalsScreen(
             }
         )
     }
+
+    // Spend Goal Funds Dialog
+    goalToSpend?.let { goal ->
+        SpendGoalFundsDialog(
+            goal = goal,
+            onDismiss = { goalToSpend = null },
+            onConfirm = { amount, title, note, dateMillis ->
+                onSpendGoalFunds(goal, amount, title, note, dateMillis)
+                goalToSpend = null
+            }
+        )
+    }
+
+    // Goal Expense History Dialog
+    goalForHistory?.let { goal ->
+        val expenses = remember(transactions, goal.name) {
+            transactions.filter {
+                it.categoryName.equals("Pengeluaran Tujuan", ignoreCase = true) &&
+                (it.wallet.equals("Tujuan: ${goal.name}", ignoreCase = true) ||
+                 it.wallet.equals("Tabungan: ${goal.name}", ignoreCase = true) ||
+                 it.wallet.contains(goal.name, ignoreCase = true))
+            }
+        }
+        GoalExpensesHistoryDialog(
+            goal = goal,
+            expenses = expenses,
+            onDismiss = { goalForHistory = null },
+            onDeleteExpense = { tx ->
+                onDeleteGoalExpense(goal, tx)
+            }
+        )
+    }
 }
 
 @Composable
 fun GoalCardItem(
     goal: FinancialGoalEntity,
+    goalExpenses: List<TransactionEntity> = emptyList(),
     onAllocate: () -> Unit,
+    onSpend: () -> Unit,
+    onViewHistory: () -> Unit,
     onDelete: () -> Unit
 ) {
     val themeColor = CategoryIconHelper.parseColor(goal.colorHex)
     val icon = CategoryIconHelper.getIcon(goal.iconName)
     val isDone = goal.isCompleted
     val animFraction by animateFloatAsState(targetValue = goal.progressFraction, label = "goalProgress")
+    val totalSpent = goalExpenses.sumOf { it.amount }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -605,6 +665,49 @@ fun GoalCardItem(
                 }
             }
 
+            // Indicator for expenses recorded in this goal
+            if (totalSpent > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Rose500.copy(alpha = 0.12f),
+                    border = BorderStroke(0.7.dp, Rose500.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onViewHistory() }
+                        .testTag("goal_spent_indicator_${goal.id}")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.ReceiptLong,
+                                contentDescription = null,
+                                tint = Rose500,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Dipakai: ${CurrencyFormatter.formatRupiah(totalSpent)} (${goalExpenses.size} pengeluaran)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Rose500
+                            )
+                        }
+                        Text(
+                            text = "Detail >",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Rose500
+                        )
+                    }
+                }
+            }
+
             // Recommendation pill capsule
             if (!isDone && goal.remainingDays > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -643,39 +746,112 @@ fun GoalCardItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Action row: + Alokasikan Dana pill & Delete icon
+            // Action row: + Alokasikan Dana pill, - Pakai Dana pill, Riwayat icon & Delete icon
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, Emerald500.copy(alpha = 0.25f)),
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { onAllocate() }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // + Alokasikan Dana
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, Emerald500.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { onAllocate() }
+                            .testTag("goal_allocate_btn_${goal.id}")
                     ) {
-                        Icon(
-                            Icons.Default.Savings,
-                            contentDescription = null,
-                            tint = Emerald500,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            "+ Alokasikan Dana",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Emerald500
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Savings,
+                                contentDescription = null,
+                                tint = Emerald500,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "+ Alokasikan",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Emerald500
+                            )
+                        }
+                    }
+
+                    // - Pakai Dana
+                    val canSpend = goal.currentSavedAmount > 0
+                    Surface(
+                        shape = CircleShape,
+                        color = if (canSpend) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (canSpend) Rose500.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                        ),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(enabled = canSpend) { onSpend() }
+                            .testTag("goal_spend_btn_${goal.id}")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Payments,
+                                contentDescription = null,
+                                tint = if (canSpend) Rose500 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "- Pakai",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (canSpend) Rose500 else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                    }
+
+                    // History button if any
+                    if (goalExpenses.isNotEmpty()) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { onViewHistory() }
+                                .testTag("goal_history_btn_${goal.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.History,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    "${goalExpenses.size}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -1109,4 +1285,448 @@ fun AddGoalDialog(
         }
     }
 }
+}
+
+@Composable
+fun SpendGoalFundsDialog(
+    goal: FinancialGoalEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (amount: Double, title: String, note: String, dateMillis: Long) -> Unit
+) {
+    var amountText by remember { mutableStateOf("") }
+    var titleText by remember { mutableStateOf("") }
+    var noteText by remember { mutableStateOf("") }
+    val dateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    val enteredAmount = amountText.filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+    val isOverBudget = enteredAmount > goal.currentSavedAmount
+    val isValid = enteredAmount > 0 && !isOverBudget && titleText.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Rose500.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Payments,
+                        contentDescription = null,
+                        tint = Rose500,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Pakai Dana Sasaran",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = goal.name,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Info Banner
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Saldo Tabungan Tersedia",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                CurrencyFormatter.formatRupiah(goal.currentSavedAmount),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Emerald500
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Pengeluaran ini terisolasi khusus di dalam sasaran ini dan tidak mempengaruhi pengeluaran umum kas harian.",
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Nominal Input
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = CurrencyFormatter.formatThousands(it) },
+                    label = { Text("Nominal Pengeluaran") },
+                    prefix = { Text("Rp ") },
+                    isError = isOverBudget,
+                    supportingText = {
+                        if (isOverBudget) {
+                            Text(
+                                "Nominal melebihi saldo tabungan (${CurrencyFormatter.formatRupiah(goal.currentSavedAmount)})",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 10.sp
+                            )
+                        } else if (enteredAmount > 0) {
+                            val remaining = (goal.currentSavedAmount - enteredAmount).coerceAtLeast(0.0)
+                            Text(
+                                "Sisa saldo: ${CurrencyFormatter.formatRupiah(remaining)}",
+                                color = Emerald500,
+                                fontSize = 10.sp
+                            )
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("spend_funds_amount_input")
+                )
+
+                // Quick percentage chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val p25 = goal.currentSavedAmount * 0.25
+                    val p50 = goal.currentSavedAmount * 0.50
+                    val p100 = goal.currentSavedAmount
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .clickable { amountText = CurrencyFormatter.formatThousands(p25.toLong().toString()) }
+                    ) {
+                        Text(
+                            "25%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .clickable { amountText = CurrencyFormatter.formatThousands(p50.toLong().toString()) }
+                    ) {
+                        Text(
+                            "50%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .clickable { amountText = CurrencyFormatter.formatThousands(p100.toLong().toString()) }
+                    ) {
+                        Text(
+                            "Semua",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+
+                // Keperluan / Judul
+                OutlinedTextField(
+                    value = titleText,
+                    onValueChange = { titleText = it },
+                    label = { Text("Keperluan / Keterangan") },
+                    placeholder = { Text("Contoh: Beli Tiket Pesawat, DP Rumah, dll", fontSize = 11.sp) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("spend_funds_title_input")
+                )
+
+                // Catatan
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    label = { Text("Catatan (Opsional)") },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("spend_funds_note_input")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isValid) {
+                        onConfirm(enteredAmount, titleText, noteText, dateMillis)
+                    }
+                },
+                enabled = isValid,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = Rose500),
+                modifier = Modifier.testTag("confirm_spend_funds_button")
+            ) {
+                Text("Catat Pengeluaran", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                shape = CircleShape
+            ) {
+                Text("Batal")
+            }
+        }
+    )
+}
+
+@Composable
+fun GoalExpensesHistoryDialog(
+    goal: FinancialGoalEntity,
+    expenses: List<TransactionEntity>,
+    onDismiss: () -> Unit,
+    onDeleteExpense: (TransactionEntity) -> Unit
+) {
+    var txToDelete by remember { mutableStateOf<TransactionEntity?>(null) }
+    val totalSpent = expenses.sumOf { it.amount }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Riwayat Pengeluaran",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = goal.name,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Tutup", modifier = Modifier.size(18.dp))
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Summary Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Rose500.copy(alpha = 0.12f),
+                    border = BorderStroke(0.8.dp, Rose500.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Total Dana Terpakai", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                CurrencyFormatter.formatRupiah(totalSpent),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Rose500
+                            )
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = Rose500.copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = "${expenses.size} Catatan",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Rose500,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Pengeluaran ini khusus dari sasaran ini dan terpisah dari pengeluaran umum.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+
+                if (expenses.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Belum ada pengeluaran yang dicatat untuk sasaran ini.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(expenses, key = { it.id }) { tx ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = tx.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = DateUtils.formatFullDate(tx.dateEpochMillis),
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (tx.note.isNotBlank()) {
+                                            Text(
+                                                text = tx.note,
+                                                fontSize = 9.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "- ${CurrencyFormatter.formatRupiah(tx.amount)}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = Rose500
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = { txToDelete = tx },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Hapus Catatan Pengeluaran",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = CircleShape
+            ) {
+                Text("Tutup")
+            }
+        }
+    )
+
+    // Deletion confirmation
+    txToDelete?.let { tx ->
+        AlertDialog(
+            onDismissRequest = { txToDelete = null },
+            title = { Text("Batalkan Pengeluaran?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Hapus catatan \"${tx.title}\"? Dana sebesar ${CurrencyFormatter.formatRupiah(tx.amount)} akan dikembalikan ke saldo tabungan sasaran ${goal.name}.",
+                    fontSize = 12.5.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteExpense(tx)
+                        txToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Rose500),
+                    shape = CircleShape
+                ) {
+                    Text("Hapus & Kembalikan Dana")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { txToDelete = null }, shape = CircleShape) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
 }

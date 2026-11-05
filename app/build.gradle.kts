@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.finvesta.app"
     minSdk = 24
     targetSdk = 36
-    versionCode = 9
-    versionName = "1.2.4"
+    versionCode = 10
+    versionName = "1.2.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
